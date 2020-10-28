@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 import spacy
 from spacy.language import Language
@@ -88,7 +88,7 @@ def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]
             date = date.strftime('%Y-%m-%d')
         return date
 
-    def get_date_matches_from_text(doc: Doc) -> List[Dict[str, Any]]:
+    def get_date_matches_from_text(doc: Doc) -> str:
         result = []
         for match_id, start, end in matcher(doc):
             match_id_str = nlp.vocab.strings[match_id]

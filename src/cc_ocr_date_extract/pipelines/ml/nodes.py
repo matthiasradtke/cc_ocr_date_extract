@@ -149,10 +149,11 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
 
                 log.info(f"Tuned threshold: {t} (acc: {acc})")
 
-                return n_correct_docs_tuned, n_docs_we_trust_tuned
+                return n_correct_docs_tuned, n_docs_we_trust_tuned, t
         return 0, 0
 
-    result['metrics']['n_correct_docs_tuned'], result['metrics']['n_docs_we_trust_tuned'] = find_threshold(df_eval)
+    result['metrics']['n_correct_docs_tuned'], result['metrics']['n_docs_we_trust_tuned'],\
+        result['metrics']['tuned_threshold'] = find_threshold(df_docs)
 
     result['metrics'] = {k: np.round(v, 2) for (k, v) in result['metrics'].items()}
 
