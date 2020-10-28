@@ -1,0 +1,38 @@
+# Here you can define all your data sets by using simple YAML syntax.
+#
+# Documentation for this file format can be found in "The Data Catalog"
+# Link: https://kedro.readthedocs.io/en/stable/05_data/01_data_catalog.html
+
+labels:
+  type: pandas.ExcelDataSet
+  filepath: data/01_raw/Auswertung.XLSX
+
+data_raw:
+  type: pandas.CSVDataSet
+  filepath: data/03_primary/data_raw.csv
+
+data_matches:
+  type: pandas.CSVDataSet
+  filepath: data/03_primary/data_matches.csv
+
+feature_names:
+  type: pandas.CSVDataSet
+  filepath: data/07_model_output/feature_names.txt
+  save_args:
+    header: False
+
+train_formatted:
+  type: pandas.CSVDataSet
+  filepath: data/05_model_input/train_formatted.csv
+
+validate_formatted:
+  type: pandas.CSVDataSet
+  filepath: data/05_model_input/validate_formatted.csv
+
+test_formatted:
+  type: pandas.CSVDataSet
+  filepath: data/05_model_input/test_formatted.csv
+
+date_model_test_evaluation:
+  type: pandas.JSONDataSet
+  filepath: data/07_model_output/date_model_test_evaluation.json

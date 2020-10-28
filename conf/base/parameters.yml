@@ -1,0 +1,30 @@
+path_pdfs: 'data/01_raw/KTA AI Rechnungen/*.pdf'
+path_auswertung: 'data/01_raw/Auswertung.XLSX'
+
+train_size: 0.8
+random_state: 42
+
+ocr_config: '--oem 1 --psm 12'
+max_page_numbers: 2
+
+spacy_lang: de_core_news_md
+
+# window size of tokens around matches
+n_lefts: 6
+n_rights: 0
+
+vectorizer:
+  analyzer: 'word'
+  ngram_range: [1,1]
+  max_df: 0.9
+  max_features: 500
+  min_df: 1
+  strip_accents: unicode
+  token_pattern: (?u)\b[^\d\W]{2,}\b
+  use_idf: True
+
+
+classifier:
+  n_estimators: 100
+  random_state: 42
+  n_jobs: -1

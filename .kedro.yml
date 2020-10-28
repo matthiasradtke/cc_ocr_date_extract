@@ -1,0 +1,7 @@
+context_path: cc_ocr_date_extract.run.ProjectContext
+project_name: "cc_ocr_date_extract"
+project_version: "0.16.5"
+package_name: "cc_ocr_date_extract"
+hooks:
+  - cc_ocr_date_extract.hooks.hooks.project_hooks
+  - cc_ocr_date_extract.hooks.model_tracking.model_tracking_hooks
