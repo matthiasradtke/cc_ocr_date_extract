@@ -24,6 +24,8 @@ kedro-viz = "^3.6.0"
 matplotlib = "^3.3.2"
 spacy-langdetect = "^0.1.2"
 mlflow = "^1.11.0"
+de-core-news-md = {url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_md-2.3.0/de_core_news_md-2.3.0.tar.gz#egg=de_core_news_md"}
+dateparser = "^0.7.6"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
