@@ -88,7 +88,7 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, pd.S
     return pipe, feature_names
 
 
-def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> Dict[str, Any]:
+def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
     df_eval = df.reset_index(drop=True).copy()
     df_eval['prediction'] = pipe.predict(df)
 
@@ -103,11 +103,11 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> Dict[str, Any]:
     # result['metrics']['f1_dates'] = f1_score(df_eval['label'], df_eval['prediction'], pos_label='Belegdatum')
 
     # Consider single date for each document
-    ## Get prediction probability for the predicted class
+    # # Get prediction probability for the predicted class
     classes = list(pipe.classes_)
     df_eval['prediction_int'] = df_eval['prediction'].apply(lambda l: classes.index(l))
     df_eval = pd.concat([df_eval, pd.DataFrame(pipe.predict_proba(df_eval))], axis=1)
-    df_eval['predict_probab'] = df_eval.apply(lambda r: r[r['prediction_int']], axis=1)
+    df_eval['predict_proba'] = df_eval.apply(lambda r: r[r['prediction_int']], axis=1)
 
     def get_single_date_for_doc(g):
         # first only consider predicted belegdatum, as this is what we want to have..
@@ -118,7 +118,7 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> Dict[str, Any]:
             if len(res) == 0:
                 res = g
         # use result with highest prediction probability
-        res = res.loc[res['predict_probab'].idxmax()]
+        res = res.loc[res['predict_proba'].idxmax()]
         return res
 
     df_docs = df_eval.groupby('file_number').apply(get_single_date_for_doc)
@@ -134,6 +134,8 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> Dict[str, Any]:
     result['metrics']['f1_docs'] = f1_score(df_docs['label'], df_docs['prediction'], pos_label='Belegdatum')
     result['metrics']['ratio_correct_docs'] = result['metrics']['tp'] / result['n_docs']
 
+    log = logging.getLogger(__name__)
+
     def find_threshold(df_, p=0.95):
         # Find prediction threshold so that accuracy for documents above is equal to p
         predict_proba = pipe.predict_proba(df_)[:, 0]
@@ -145,7 +147,6 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> Dict[str, Any]:
                 n_correct_docs_tuned = accuracy_score(df_test['label'], df_test['prediction_t'], normalize=False)
                 n_docs_we_trust_tuned = len(df_test)
 
-                log = logging.getLogger(__name__)
                 log.info(f"Tuned threshold: {t} (acc: {acc})")
 
                 return n_correct_docs_tuned, n_docs_we_trust_tuned
@@ -155,7 +156,6 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> Dict[str, Any]:
 
     result['metrics'] = {k: np.round(v, 2) for (k, v) in result['metrics'].items()}
 
-    log = logging.getLogger(__name__)
     log.info(f"Model results: {result}")
 
     return pd.Series(result)
