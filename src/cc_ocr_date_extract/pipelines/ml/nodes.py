@@ -88,9 +88,36 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, pd.S
     return pipe, feature_names
 
 
+def get_single_date_for_doc(g):
+    # first only consider predicted belegdatum, as this is what we want to have..
+    res = g.query("prediction == 'Belegdatum'")
+    if len(res) == 0:
+        # if no belegdatum predicted, use dates where the label is belegdatum
+        res = g.query("label == 'Belegdatum'")
+        if len(res) == 0:
+            res = g
+    # use result with highest prediction probability
+    res = res.loc[res['predict_proba_predicted_class'].idxmax()]
+    return res
+
+
+def find_threshold(df_, predict_proba, prec=0.95):
+    # Find prediction threshold so get target precision
+    for t in np.arange(0, 1.01, 0.01):
+        df_['prediction_t'] = ['Belegdatum' if v >= t else 'other_date' for v in predict_proba]
+        tp = len(df_.query("prediction_t == 'Belegdatum' & label == 'Belegdatum'"))
+        fp = len(df_.query("prediction_t == 'Belegdatum' & label != 'Belegdatum'"))
+        n_pred_pos = sum(df_['prediction_t'] == 'Belegdatum')
+        p = tp / (tp + fp)
+        if p >= prec:
+            return tp, n_pred_pos, t, prec
+    return 0, 0, 1
+
+
 def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
     df_eval = df.reset_index(drop=True).copy()
     df_eval['prediction'] = pipe.predict(df)
+    predict_proba = pipe.predict_proba(df)
 
     result = {'n_docs': len(pd.unique(df_eval['file_number'])),
               'n_dates': len(df_eval),
@@ -106,20 +133,8 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
     # # Get prediction probability for the predicted class
     classes = list(pipe.classes_)
     df_eval['prediction_int'] = df_eval['prediction'].apply(lambda l: classes.index(l))
-    df_eval = pd.concat([df_eval, pd.DataFrame(pipe.predict_proba(df_eval))], axis=1)
-    df_eval['predict_proba'] = df_eval.apply(lambda r: r[r['prediction_int']], axis=1)
-
-    def get_single_date_for_doc(g):
-        # first only consider predicted belegdatum, as this is what we want to have..
-        res = g.query("prediction == 'Belegdatum'")
-        if len(res) == 0:
-            # if no belegdatum predicted, use dates where the label is belegdatum
-            res = g.query("label == 'Belegdatum'")
-            if len(res) == 0:
-                res = g
-        # use result with highest prediction probability
-        res = res.loc[res['predict_proba'].idxmax()]
-        return res
+    df_eval = pd.concat([df_eval, pd.DataFrame(predict_proba)], axis=1)
+    df_eval['predict_proba_predicted_class'] = df_eval.apply(lambda r: r[r['prediction_int']], axis=1)
 
     df_docs = df_eval.groupby('file_number').apply(get_single_date_for_doc)
 
@@ -136,24 +151,15 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
 
     log = logging.getLogger(__name__)
 
-    def find_threshold(df_, p=0.95):
-        # Find prediction threshold so that accuracy for documents above is equal to p
-        predict_proba = pipe.predict_proba(df_)[:, 0]
-        for t in np.arange(0, 1.01, 0.01):
-            df_['prediction_t'] = ['Belegdatum' if v >= t else 'other_date' for v in predict_proba]
-            df_test = df_.query("prediction_t == 'Belegdatum'")
-            acc = round(accuracy_score(df_test['label'], df_test['prediction_t']), 2)
-            if acc >= p:
-                n_correct_docs_tuned = accuracy_score(df_test['label'], df_test['prediction_t'], normalize=False)
-                n_docs_we_trust_tuned = len(df_test)
+    predict_proba_belegdatum = pipe.predict_proba(df_docs)[:, 0]
+    tp, n_pred_pos, t, prec = find_threshold(df_docs, predict_proba_belegdatum)
+    log.info(f"Tuned threshold: {t} (prec: {prec})")
 
-                log.info(f"Tuned threshold: {t} (acc: {acc})")
-
-                return n_correct_docs_tuned, n_docs_we_trust_tuned, t
-        return 0, 0
-
-    result['metrics']['n_correct_docs_tuned'], result['metrics']['n_docs_we_trust_tuned'],\
-        result['metrics']['tuned_threshold'] = find_threshold(df_docs)
+    result['metrics']['tuned_tp'] = tp
+    result['metrics']['tuned_prec'] = prec
+    result['metrics']['tuned_n_docs_we_trust'] = n_pred_pos
+    result['metrics']['tuned_n_docs_manual'] = len(df_docs) - n_pred_pos
+    result['metrics']['tuned_threshold'] = t
 
     result['metrics'] = {k: np.round(v, 2) for (k, v) in result['metrics'].items()}
 
