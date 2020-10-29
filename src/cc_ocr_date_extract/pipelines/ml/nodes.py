@@ -10,8 +10,7 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
-
-from sklearn_pandas import DataFrameMapper
+from sklearn.compose import make_column_transformer
 
 
 def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> List[pd.DataFrame]:
@@ -70,20 +69,13 @@ def evaluate_ocr_result(df: pd.DataFrame) -> Dict[str, Any]:
 def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, pd.Series):
     vectorizer_text = TfidfVectorizer(**parameters['vectorizer'])
 
-    feature_selection = None
-    classifier = RandomForestClassifier(**parameters['classifier'])
-
     pipe = Pipeline([
-        ('features', DataFrameMapper([
-            ('text', vectorizer_text)
-        ])),
-        ('feature_selection', feature_selection),
-        ('clf', classifier),
+        ('features', make_column_transformer((vectorizer_text, 'text'))),
+        ('clf', RandomForestClassifier(**parameters['classifier'])),
     ])
-
     pipe.fit(df, df['label'])
 
-    feature_names = pd.Series(vectorizer_text.get_feature_names())
+    feature_names = pd.Series(pipe.named_steps['features'].get_feature_names())
 
     return pipe, feature_names
 
@@ -149,10 +141,10 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
     result['metrics']['f1_docs'] = f1_score(df_docs['label'], df_docs['prediction'], pos_label='Belegdatum')
     result['metrics']['ratio_correct_docs'] = result['metrics']['tp'] / result['n_docs']
 
-    log = logging.getLogger(__name__)
-
     predict_proba_belegdatum = pipe.predict_proba(df_docs)[:, 0]
     tp, n_pred_pos, t, prec = find_threshold(df_docs, predict_proba_belegdatum)
+
+    log = logging.getLogger(__name__)
     log.info(f"Tuned threshold: {t} (prec: {prec})")
 
     result['metrics']['tuned_tp'] = tp
