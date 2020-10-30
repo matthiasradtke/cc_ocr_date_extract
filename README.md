@@ -2,9 +2,9 @@
 
 ## Overview
 This project is an example of a production-ready pipeline that performed OCR on a collection of PDF documents
-(e.g. invoices) and extracts a searched date (e.g. invoice date). 
+(e.g. invoices) and extracts a particular date (e.g. invoice date) for each document. 
 A model is trained to classify all parsed dates in order to identify the searched date.
-The classification is primarily based on text-based features associated with the search date. 
+The classification is primarily based on text-based features associated with the searched date. 
 
 ## How to Install and Run
 Install [python-poetry](https://python-poetry.org/docs/), a tool for dependency management and packaging.
