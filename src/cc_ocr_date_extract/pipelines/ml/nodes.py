@@ -155,13 +155,18 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
                                                                  pos_label='Belegdatum')
 
     # tune threshoold
-    tp, n_pred_pos, t, prec = find_threshold(df_docs['label'], predict_proba_belegdatum, pos_label='Belegdatum')
+    tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, precision = find_threshold(
+        df_docs['label'], predict_proba_belegdatum, pos_label='Belegdatum'
+    )
     result['tune_threshold_metrics'] = {
+        'tn': tn,
+        'fp': fp,
+        'fn': fn,
         'tp': tp,
-        'prec': prec,
-        'n_docs_we_trust': n_pred_pos,
-        'n_docs_manual': len(df_docs) - n_pred_pos,
+        'n_pred_pos': n_pred_pos,
+        'n_docs_manual': n_docs_manual,
         'threshold': t,
+        'precision': precision,
     }
 
     result['metrics'] = round_floats_in_dict(result['metrics'])

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, confusion_matrix
 
 
 def evaluate_ocr_result(df: pd.DataFrame) -> Dict[str, Any]:
@@ -40,19 +40,21 @@ def get_single_date_for_doc(g):
     return res
 
 
-def find_threshold(label, predict_proba, pos_label='Belegdatum', target_precision=0.95):
+def find_threshold(label, predict_proba, pos_label, target_precision=0.94):
     # Find prediction threshold so get target precision
     assert (len(label) == len(predict_proba))
     df = pd.DataFrame({'label': label})
+    tn, fp, fn, tp, n_pred_pos, t, p = 0, 0, 0, 0, 0, 0, 0
     for t in np.arange(0, 1.01, 0.01):
         df['prediction_t'] = [pos_label if v >= t else 'other_date' for v in predict_proba]
-        tp = len(df[(df['prediction_t'] == pos_label) & (df['label'] == pos_label)])
-        fp = len(df[(df['prediction_t'] == pos_label) & (df['label'] != pos_label)])
         n_pred_pos = sum(df['prediction_t'] == pos_label)
+        tn, fp, fn, tp = confusion_matrix(df['label'], df['prediction_t'], labels=['other_date', 'Belegdatum']).ravel()
         p = tp / (tp + fp)
         if p >= target_precision:
-            return tp, n_pred_pos, t, target_precision
-    return 0, 0, 1, target_precision
+            break
+    n_docs_manual = len(label) - n_pred_pos
+    return tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, p
+
 
 
 def round_floats_in_dict(d):
