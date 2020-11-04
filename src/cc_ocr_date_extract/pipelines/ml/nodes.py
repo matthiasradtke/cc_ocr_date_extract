@@ -1,16 +1,19 @@
 from typing import Dict, Any, List
 import logging
-
 import json
 
 import pandas as pd
 import numpy as np
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.compose import make_column_transformer
+from sklearn.model_selection import GroupShuffleSplit, GridSearchCV, cross_validate
+from sklearn.metrics import make_scorer, f1_score, average_precision_score, accuracy_score, confusion_matrix
+
+from .utils import evaluate_ocr_result, remove_numbers_from_string, custom_avg_precision_score
+from .utils import get_single_date_for_doc, find_threshold, round_floats_in_dict
 
 
 def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> List[pd.DataFrame]:
@@ -43,7 +46,9 @@ def transform_into_training_format(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop('pdf_text', axis=1)
     df['text'] = df['text_left'].fillna('').str.cat(df['text_right'].fillna(''), sep=' ')
 
-    evaluate_ocr_result(df)
+    ocr_result = evaluate_ocr_result(df)
+    log = logging.getLogger(__name__)
+    log.info(f"OCR results: {ocr_result}")
 
     # drop documents were no dates have been found
     df = df[['file_number', 'match_date', 'text', 'label']].dropna()
@@ -51,65 +56,69 @@ def transform_into_training_format(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def evaluate_ocr_result(df: pd.DataFrame) -> Dict[str, Any]:
-    result = {'n_docs': len(pd.unique(df['file_number'])),
-              'n_found_dates': len(df),
-              'n_docs_no_date_found': sum(pd.isna(df['match_date'])),
-              # how often does no date matches the given belegdatum
-              'n_docs_no_belegdatum_found': (
-                      len(pd.unique(df['file_number'])) -
-                      len(pd.unique(df.query("label == 'Belegdatum'")['file_number'])))}
+def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str, pd.Series):
+    vectorizer = TfidfVectorizer(preprocessor=remove_numbers_from_string, **parameters['vectorizer'])
+    classifier = RandomForestClassifier(n_jobs=parameters['n_jobs'], random_state=parameters['random_state'],
+                                        **parameters['classifier'])
+    pipe = Pipeline([
+        ('features', make_column_transformer((vectorizer, 'text'))),
+        ('clf', classifier),
+    ])
 
     log = logging.getLogger(__name__)
-    log.info("OCR results: " + str(result))
 
-    return result
+    scoring = {
+        'f1': make_scorer(f1_score, pos_label='Belegdatum'),
+        'avg_prec': make_scorer(custom_avg_precision_score, needs_proba=True),
+    }
+    cv = GroupShuffleSplit(random_state=parameters['random_state'])
 
+    if not parameters['perform_grid_search']:
+        best_pipeline = pipe.fit(df, df['label'])
+        best_params = str(best_pipeline.get_params())
+    else:
+        param_grid = {
+            'features__tfidfvectorizer__analyzer': ['char_wb'],
+            # 'features__tfidfvectorizer__preprocessor': [None, remove_numbers_from_string],
+            # 'features__tfidfvectorizer__ngram_range': [(1, 4), (1, 5), (1, 6)],
+            'features__tfidfvectorizer__max_df': [0.7, 0.8, 0.9],
+            # 'features__tfidfvectorizer__max_features': [1000, None],
+            'features__tfidfvectorizer__min_df': [1],
+            # 'features__tfidfvectorizer__use_idf': [True, False],
+            # 'features__tfidfvectorizer__binary': [True, False],
+            'features__tfidfvectorizer__binary': [False],
+            'clf__n_estimators': [100, 200, 300],
+            # 'clf__max_features': [None, 'sqrt', 100],
+        }
+        grid_search = GridSearchCV(pipe, param_grid,
+                                   refit='avg_prec',
+                                   scoring=scoring, cv=cv, verbose=1, n_jobs=parameters['n_jobs'])
+        grid_search.fit(df, df['label'], groups=df['file_number'])
 
-def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, pd.Series):
-    vectorizer_text = TfidfVectorizer(**parameters['vectorizer'])
+        best_pipeline = grid_search.best_estimator_
+        best_params = str(grid_search.best_params_)
 
-    pipe = Pipeline([
-        ('features', make_column_transformer((vectorizer_text, 'text'))),
-        ('clf', RandomForestClassifier(**parameters['classifier'])),
-    ])
-    pipe.fit(df, df['label'])
+        log.info(f"Grid Search: Best parameters: {best_params})")
 
-    feature_names = pd.Series(pipe.named_steps['features'].get_feature_names())
+    # final cv scores
+    cv_scores = cross_validate(best_pipeline, df, y=df['label'], groups=df['file_number'],
+                               scoring=scoring, cv=cv, n_jobs=parameters['n_jobs'], return_train_score=True)
+    cv_scores = {k: np.round(np.mean(v), 2) for (k, v) in cv_scores.items()}
 
-    return pipe, feature_names
+    log.info(f"F1 test score: {cv_scores['test_f1']}")
+    log.info(f"Avg precision test score: {cv_scores['test_avg_prec']}")
+    log.info(f"F1 train score: {cv_scores['train_f1']}")
+    log.info(f"Avg precision train score: {cv_scores['train_avg_prec']}")
 
+    feature_names = pd.Series(best_pipeline.named_steps['features'].get_feature_names())
 
-def get_single_date_for_doc(g):
-    # first only consider predicted belegdatum, as this is what we want to have..
-    res = g.query("prediction == 'Belegdatum'")
-    if len(res) == 0:
-        # if no belegdatum predicted, use dates where the label is belegdatum
-        res = g.query("label == 'Belegdatum'")
-        if len(res) == 0:
-            res = g
-    # use result with highest prediction probability
-    res = res.loc[res['predict_proba_predicted_class'].idxmax()]
-    return res
-
-
-def find_threshold(df_, predict_proba, prec=0.95):
-    # Find prediction threshold so get target precision
-    for t in np.arange(0, 1.01, 0.01):
-        df_['prediction_t'] = ['Belegdatum' if v >= t else 'other_date' for v in predict_proba]
-        tp = len(df_.query("prediction_t == 'Belegdatum' & label == 'Belegdatum'"))
-        fp = len(df_.query("prediction_t == 'Belegdatum' & label != 'Belegdatum'"))
-        n_pred_pos = sum(df_['prediction_t'] == 'Belegdatum')
-        p = tp / (tp + fp)
-        if p >= prec:
-            return tp, n_pred_pos, t, prec
-    return 0, 0, 1
+    return best_pipeline, best_params, feature_names
 
 
 def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
     df_eval = df.reset_index(drop=True).copy()
-    df_eval['prediction'] = pipe.predict(df)
-    predict_proba = pipe.predict_proba(df)
+    df_eval['prediction'] = pipe.predict(df_eval)
+    predict_proba = pipe.predict_proba(df_eval)
 
     result = {'n_docs': len(pd.unique(df_eval['file_number'])),
               'n_dates': len(df_eval),
@@ -118,8 +127,9 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
               'metrics': {}}
 
     # Consider all dates
-    # result['metrics']['acc_dates'] = accuracy_score(df_eval['label'], df_eval['prediction'])
-    # result['metrics']['f1_dates'] = f1_score(df_eval['label'], df_eval['prediction'], pos_label='Belegdatum')
+    result['metrics']['f1_date'] = f1_score(df_eval['label'], df_eval['prediction'], pos_label='Belegdatum')
+    result['metrics']['avg_prec_dates'] = average_precision_score(df_eval['label'], predict_proba[:, 0],
+                                                                  pos_label='Belegdatum')
 
     # Consider single date for each document
     # # Get prediction probability for the predicted class
@@ -139,22 +149,25 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
 
     result['metrics']['acc_docs'] = accuracy_score(df_docs['label'], df_docs['prediction'])
     result['metrics']['f1_docs'] = f1_score(df_docs['label'], df_docs['prediction'], pos_label='Belegdatum')
-    result['metrics']['ratio_correct_docs'] = result['metrics']['tp'] / result['n_docs']
 
     predict_proba_belegdatum = pipe.predict_proba(df_docs)[:, 0]
-    tp, n_pred_pos, t, prec = find_threshold(df_docs, predict_proba_belegdatum)
+    result['metrics']['avg_prec_docs'] = average_precision_score(df_docs['label'], predict_proba_belegdatum,
+                                                                 pos_label='Belegdatum')
+
+    # tune threshoold
+    tp, n_pred_pos, t, prec = find_threshold(df_docs['label'], predict_proba_belegdatum, pos_label='Belegdatum')
+    result['tune_threshold_metrics'] = {
+        'tp': tp,
+        'prec': prec,
+        'n_docs_we_trust': n_pred_pos,
+        'n_docs_manual': len(df_docs) - n_pred_pos,
+        'threshold': t,
+    }
+
+    result['metrics'] = round_floats_in_dict(result['metrics'])
+    result['tune_threshold_metrics'] = round_floats_in_dict(result['tune_threshold_metrics'])
 
     log = logging.getLogger(__name__)
-    log.info(f"Tuned threshold: {t} (prec: {prec})")
-
-    result['metrics']['tuned_tp'] = tp
-    result['metrics']['tuned_prec'] = prec
-    result['metrics']['tuned_n_docs_we_trust'] = n_pred_pos
-    result['metrics']['tuned_n_docs_manual'] = len(df_docs) - n_pred_pos
-    result['metrics']['tuned_threshold'] = t
-
-    result['metrics'] = {k: np.round(v, 2) for (k, v) in result['metrics'].items()}
-
     log.info(f"Model results: {result}")
 
     return pd.Series(result)

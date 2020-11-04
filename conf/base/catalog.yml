@@ -33,6 +33,14 @@ test_formatted:
   type: pandas.CSVDataSet
   filepath: data/05_model_input/test_formatted.csv
 
+date_model:
+  type: pickle.PickleDataSet
+  filepath: data/06_models/date_model.pkl
+
+date_model_parameters:
+  type: text.TextDataSet
+  filepath: data/06_models/date_model_parameters.txt
+
 date_model_test_evaluation:
   type: pandas.JSONDataSet
   filepath: data/07_model_output/date_model_test_evaluation.json
