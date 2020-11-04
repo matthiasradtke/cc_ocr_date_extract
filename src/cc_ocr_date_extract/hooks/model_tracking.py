@@ -23,11 +23,6 @@ class ModelTrackingHooks:
             mlflow.sklearn.log_model(outputs["date_model"], "model")
             mlflow.log_params(inputs["parameters"])
 
-        elif node.name == "evaluate model on training data":
-            metrics = outputs["date_model_train_evaluation"]["metrics"]
-            metrics = {f"train_{k}": v for (k, v) in metrics.items()}
-            mlflow.log_metrics(metrics)
-
         elif node.name == "evaluate model on testing data":
             mlflow.log_metrics(outputs["date_model_test_evaluation"]["metrics"])
 
