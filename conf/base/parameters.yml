@@ -10,8 +10,8 @@ max_page_numbers: 2
 spacy_lang: de_core_news_md
 
 # window size of tokens around matches
-n_lefts: 6
-n_rights: 0
+n_lefts: 10
+n_rights: 4
 
 perform_grid_search: False
 n_jobs: -1
