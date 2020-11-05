@@ -37,7 +37,7 @@ def create_pipeline(**kwargs):
             node(
                 func=evaluate_model,
                 inputs=['date_model', 'test_formatted'],
-                outputs='date_model_test_evaluation',
+                outputs=['date_model_test_evaluation', 'test_docs'],
                 name='evaluate model on testing data',
                 tags=['test']
             ),

@@ -10,10 +10,11 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.compose import make_column_transformer
 from sklearn.model_selection import GroupShuffleSplit, GridSearchCV, cross_validate
-from sklearn.metrics import make_scorer, f1_score, average_precision_score, accuracy_score, confusion_matrix
+from sklearn.metrics import make_scorer, f1_score, average_precision_score
 
-from .utils import evaluate_ocr_result, remove_numbers_from_string, custom_avg_precision_score
-from .utils import get_single_date_for_doc, find_threshold, round_floats_in_dict
+from cc_ocr_date_extract.pipelines.ml.utils import evaluate_ocr_result, remove_numbers_from_string, \
+    custom_avg_precision_score
+from cc_ocr_date_extract.pipelines.ml.utils import apply_threshold, find_threshold, round_floats_in_dict
 
 
 def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> List[pd.DataFrame]:
@@ -115,50 +116,37 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
     return best_pipeline, best_params, feature_names
 
 
-def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
-    df_eval = df.reset_index(drop=True).copy()
-    df_eval['prediction'] = pipe.predict(df_eval)
-    predict_proba = pipe.predict_proba(df_eval)
-
-    result = {'n_docs': len(pd.unique(df_eval['file_number'])),
-              'n_dates': len(df_eval),
-              'n_label': dict(df_eval['label'].value_counts()),
-              'n_prediction': dict(df_eval['prediction'].value_counts()),
-              'metrics': {}}
-
-    # Consider all dates
-    result['metrics']['f1_date'] = f1_score(df_eval['label'], df_eval['prediction'], pos_label='Belegdatum')
-    result['metrics']['avg_prec_dates'] = average_precision_score(df_eval['label'], predict_proba[:, 0],
-                                                                  pos_label='Belegdatum')
+def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> (pd.Series, pd.DataFrame):
+    df['predict_proba_belegdatum'] = pipe.predict_proba(df)[:, 0]
 
     # Consider single date for each document
-    # # Get prediction probability for the predicted class
-    classes = list(pipe.classes_)
-    df_eval['prediction_int'] = df_eval['prediction'].apply(lambda l: classes.index(l))
-    df_eval = pd.concat([df_eval, pd.DataFrame(predict_proba)], axis=1)
-    df_eval['predict_proba_predicted_class'] = df_eval.apply(lambda r: r[r['prediction_int']], axis=1)
+    # Use date with highest prediction probability for the belegdatum
+    df_docs = df.loc[df.groupby('file_number')['predict_proba_belegdatum'].idxmax()]
 
-    df_docs = df_eval.groupby('file_number').apply(get_single_date_for_doc)
+    result = {
+        'n_docs': len(pd.unique(df['file_number'])),
+        'n_dates': len(df),
+        'n_label': dict(df_docs['label'].value_counts()),
+        'n_no_belegdatum_found': sum(df.groupby('file_number').apply(lambda x: 'Belegdatum' not in x['label'].values)),
+        'metrics': {
+            'avg_prec_dates': average_precision_score(df['label'], df['predict_proba_belegdatum'],
+                                                      pos_label='Belegdatum'),
+            'avg_prec_docs': average_precision_score(df_docs['label'], df_docs['predict_proba_belegdatum'],
+                                                     pos_label='Belegdatum'),
+        }
+    }
 
-    tn, fp, fn, tp = confusion_matrix(df_docs['label'], df_docs['prediction'],
-                                      labels=['other_date', 'Belegdatum']).ravel()
-    result['metrics']['tn'] = tn
-    result['metrics']['fp'] = fp
-    result['metrics']['fn'] = fn
-    result['metrics']['tp'] = tp
-
-    result['metrics']['acc_docs'] = accuracy_score(df_docs['label'], df_docs['prediction'])
-    result['metrics']['f1_docs'] = f1_score(df_docs['label'], df_docs['prediction'], pos_label='Belegdatum')
-
-    predict_proba_belegdatum = pipe.predict_proba(df_docs)[:, 0]
-    result['metrics']['avg_prec_docs'] = average_precision_score(df_docs['label'], predict_proba_belegdatum,
-                                                                 pos_label='Belegdatum')
-
-    # tune threshoold
-    tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, precision = find_threshold(
-        df_docs['label'], predict_proba_belegdatum, pos_label='Belegdatum'
+    # apply threshold
+    tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, precision = apply_threshold(
+        df_docs['label'], df_docs['predict_proba_belegdatum'], pos_label='Belegdatum', threshold=0.8
     )
-    result['tune_threshold_metrics'] = {
+
+    # # tune threshold to reach target precision
+    # tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, precision = find_threshold(
+    #     df_docs['label'], df_docs['predict_proba_belegdatum'], pos_label='Belegdatum', target_precision=0.97
+    # )
+
+    result['threshold_metrics'] = {
         'tn': tn,
         'fp': fp,
         'fn': fn,
@@ -170,9 +158,9 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> pd.Series:
     }
 
     result['metrics'] = round_floats_in_dict(result['metrics'])
-    result['tune_threshold_metrics'] = round_floats_in_dict(result['tune_threshold_metrics'])
+    result['threshold_metrics'] = round_floats_in_dict(result['threshold_metrics'])
 
     log = logging.getLogger(__name__)
     log.info(f"Model results: {result}")
 
-    return pd.Series(result)
+    return pd.Series(result), df_docs

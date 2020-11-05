@@ -7,13 +7,13 @@ from sklearn.metrics import average_precision_score, confusion_matrix
 
 
 def evaluate_ocr_result(df: pd.DataFrame) -> Dict[str, Any]:
-    result = {'n_docs': len(pd.unique(df['file_number'])),
+    n_docs = len(pd.unique(df['file_number']))
+    n_no_belegdatum = sum(df.dropna().groupby('file_number').apply(lambda x: 'Belegdatum' not in x['label'].values))
+    result = {'n_docs': n_docs,
               'n_found_dates': len(df),
               'n_docs_no_date_found': sum(pd.isna(df['match_date'])),
               # how often does no date matches the given belegdatum
-              'n_docs_no_belegdatum_found': (
-                      len(pd.unique(df['file_number'])) -
-                      len(pd.unique(df.query("label == 'Belegdatum'")['file_number'])))}
+              'n_docs_no_belegdatum_found': n_no_belegdatum}
 
     return result
 
@@ -27,34 +27,23 @@ def remove_numbers_from_string(s: str) -> str:
     return re.sub(r'[\d\W]+', '', s).lower()
 
 
-def get_single_date_for_doc(g):
-    # first only consider predicted belegdatum, as this is what we want to have..
-    res = g.query("prediction == 'Belegdatum'")
-    if len(res) == 0:
-        # if no belegdatum predicted, use dates where the label is belegdatum
-        res = g.query("label == 'Belegdatum'")
-        if len(res) == 0:
-            res = g
-    # use result with highest prediction probability
-    res = res.loc[res['predict_proba_predicted_class'].idxmax()]
-    return res
+def apply_threshold(label, predict_proba, pos_label, threshold):
+    prediction = pd.Series([pos_label if v >= threshold else 'other_date' for v in predict_proba])
+    n_pred_pos = sum(prediction == pos_label)
+    tn, fp, fn, tp = confusion_matrix(label, prediction, labels=['other_date', 'Belegdatum']).ravel()
+    p = tp / (tp + fp)
+    n_docs_manual = len(label) - n_pred_pos
+    return tn, fp, fn, tp, n_pred_pos, n_docs_manual, threshold, p
 
 
-def find_threshold(label, predict_proba, pos_label, target_precision=0.94):
+def find_threshold(label, predict_proba, pos_label, target_precision):
     # Find prediction threshold so get target precision
     assert (len(label) == len(predict_proba))
-    df = pd.DataFrame({'label': label})
-    tn, fp, fn, tp, n_pred_pos, t, p = 0, 0, 0, 0, 0, 0, 0
     for t in np.arange(0, 1.01, 0.01):
-        df['prediction_t'] = [pos_label if v >= t else 'other_date' for v in predict_proba]
-        n_pred_pos = sum(df['prediction_t'] == pos_label)
-        tn, fp, fn, tp = confusion_matrix(df['label'], df['prediction_t'], labels=['other_date', 'Belegdatum']).ravel()
-        p = tp / (tp + fp)
+        tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, p = apply_threshold(label, predict_proba, pos_label, t)
         if p >= target_precision:
-            break
-    n_docs_manual = len(label) - n_pred_pos
-    return tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, p
-
+            return tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, p
+    return apply_threshold(label, predict_proba, pos_label, threshold=0.5)
 
 
 def round_floats_in_dict(d):
