@@ -28,16 +28,18 @@ def remove_numbers_from_string(s: str) -> str:
 
 
 def apply_threshold(label, predict_proba, pos_label, threshold):
+    # Apply decision threshold to binary classification result
+    # Return metrics
     prediction = pd.Series([pos_label if v >= threshold else 'other_date' for v in predict_proba])
     n_pred_pos = sum(prediction == pos_label)
-    tn, fp, fn, tp = confusion_matrix(label, prediction, labels=['other_date', 'Belegdatum']).ravel()
+    tn, fp, fn, tp = confusion_matrix(label, prediction, labels=['other_date', pos_label]).ravel()
     p = tp / (tp + fp)
     n_docs_manual = len(label) - n_pred_pos
     return tn, fp, fn, tp, n_pred_pos, n_docs_manual, threshold, p
 
 
 def find_threshold(label, predict_proba, pos_label, target_precision):
-    # Find prediction threshold so get target precision
+    # Find decision threshold so get target precision
     assert (len(label) == len(predict_proba))
     for t in np.arange(0, 1.01, 0.01):
         tn, fp, fn, tp, n_pred_pos, n_docs_manual, t, p = apply_threshold(label, predict_proba, pos_label, t)

@@ -92,8 +92,7 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
             # 'clf__max_features': [None, 'sqrt', 100],
         }
         grid_search = GridSearchCV(pipe, param_grid,
-                                   refit='avg_prec',
-                                   scoring=scoring, cv=cv, verbose=1, n_jobs=parameters['n_jobs'])
+                                   refit='avg_prec', scoring=scoring, cv=cv, verbose=1, n_jobs=parameters['n_jobs'])
         grid_search.fit(df, df['label'], groups=df['file_number'])
 
         best_pipeline = grid_search.best_estimator_
