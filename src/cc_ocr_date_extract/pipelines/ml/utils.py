@@ -24,7 +24,9 @@ def custom_avg_precision_score(y_true, y_score):
 
 
 def remove_numbers_from_string(s: str) -> str:
-    return re.sub(r'[\d\W]+', '', s).lower()
+    s = re.sub(r'[\d\W]+', ' ', s)
+    s = re.sub(r'\s+', ' ', s)
+    return s.lower()
 
 
 def apply_threshold(label, predict_proba, pos_label, threshold):
