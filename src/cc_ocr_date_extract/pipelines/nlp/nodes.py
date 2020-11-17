@@ -90,13 +90,14 @@ def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]
 
     def get_date_matches_from_text(doc: Doc) -> str:
         result = []
-        for match_id, start, end in matcher(doc):
+        for i, (match_id, start, end) in enumerate(matcher(doc)):
             match_id_str = nlp.vocab.strings[match_id]
             match_string = doc[start:end].text
             match_date = parse_date(match_string, doc._.language['language'])
             text_left = doc[max(0, start - parameters['n_lefts']):max(0, end - 1)].text
             text_right = doc[end:min(len(doc), end + parameters['n_rights'])].text
             result.append({
+                'match_number': i,
                 'match_id': match_id_str,
                 'match_string': match_string,
                 'match_date': match_date,

@@ -17,14 +17,14 @@ perform_grid_search: False
 n_jobs: -1
 
 vectorizer:
-  analyzer: 'char_wb'
-  ngram_range: [1,4]
+  analyzer: 'word'
+  ngram_range: [1,1]
   max_df: 0.7
   min_df: 1
   strip_accents: unicode
   token_pattern: (?u)\b[^\d\W]{2,}\b
-  use_idf: False
-  binary: False
+  use_idf: True
+  binary: True
   sublinear_tf: True
 
 classifier:

@@ -47,23 +47,27 @@ def transform_into_training_format(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop('pdf_text', axis=1)
     df['text'] = df['text_left'].fillna('').str.cat(df['text_right'].fillna(''), sep=' ')
 
+    # create position feature
+    df['position'] = df['match_number']
+
     ocr_result = evaluate_ocr_result(df)
     log = logging.getLogger(__name__)
     log.info(f"OCR results: {ocr_result}")
 
     # drop documents were no dates have been found
-    df = df[['file_number', 'match_date', 'text', 'label']].dropna()
+    df = df[['file_number', 'position', 'match_date', 'text', 'label']].dropna()
 
     return df
 
 
 def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str, pd.Series):
-    preprocessor = None  # remove_numbers_from_string()
+    preprocessor = remove_numbers_from_string
     vectorizer = TfidfVectorizer(preprocessor=preprocessor, **parameters['vectorizer'])
     classifier = RandomForestClassifier(n_jobs=parameters['n_jobs'], random_state=parameters['random_state'],
                                         **parameters['classifier'])
     pipe = Pipeline([
-        ('features', make_column_transformer((vectorizer, 'text'))),
+        ('features', make_column_transformer((vectorizer, 'text'),
+                                             ('passthrough', ['position']))),
         ('clf', classifier),
     ])
 
@@ -80,16 +84,15 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
         best_params = str(best_pipeline.get_params())
     else:
         param_grid = {
-            'features__tfidfvectorizer__analyzer': ['char_wb'],
+            'features__tfidfvectorizer__analyzer': ['word'],
             # 'features__tfidfvectorizer__preprocessor': [None, remove_numbers_from_string],
-            # 'features__tfidfvectorizer__ngram_range': [(1, 4), (1, 5), (1, 6)],
+            # 'features__tfidfvectorizer__ngram_range': [(1, 1), (1, 2), (1, 3)],
             'features__tfidfvectorizer__max_df': [0.7, 0.8, 0.9],
             # 'features__tfidfvectorizer__max_features': [1000, None],
             'features__tfidfvectorizer__min_df': [1],
             # 'features__tfidfvectorizer__use_idf': [True, False],
             # 'features__tfidfvectorizer__binary': [True, False],
-            'features__tfidfvectorizer__binary': [False],
-            'clf__n_estimators': [100, 200, 300],
+            'clf__n_estimators': [200, 300, 500],
             # 'clf__max_features': [None, 'sqrt', 100],
         }
         grid_search = GridSearchCV(pipe, param_grid,
