@@ -18,7 +18,7 @@ n_jobs: -1
 
 vectorizer:
   analyzer: 'char_wb'
-  ngram_range: [1,5]
+  ngram_range: [1,4]
   max_df: 0.7
   min_df: 1
   strip_accents: unicode
@@ -28,5 +28,5 @@ vectorizer:
   sublinear_tf: True
 
 classifier:
-  n_estimators: 200
+  n_estimators: 300
   max_features: 'sqrt'

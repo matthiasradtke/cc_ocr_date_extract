@@ -58,7 +58,8 @@ def transform_into_training_format(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str, pd.Series):
-    vectorizer = TfidfVectorizer(preprocessor=remove_numbers_from_string, **parameters['vectorizer'])
+    preprocessor = None  # remove_numbers_from_string()
+    vectorizer = TfidfVectorizer(preprocessor=preprocessor, **parameters['vectorizer'])
     classifier = RandomForestClassifier(n_jobs=parameters['n_jobs'], random_state=parameters['random_state'],
                                         **parameters['classifier'])
     pipe = Pipeline([
