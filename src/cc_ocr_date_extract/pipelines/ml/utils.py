@@ -23,6 +23,14 @@ def custom_avg_precision_score(y_true, y_score):
     return average_precision_score(y_true, 1 - y_score, pos_label='Belegdatum')
 
 
+def score_acc_docs(estimator, df, y):
+    df_docs = df.copy()
+    df_docs['predict_proba'] = estimator.predict_proba(df_docs)[:, 0]
+    df_docs = df_docs.loc[df_docs.groupby('file_number')['predict_proba'].idxmax()]
+    acc = len(df_docs.query("label == 'Belegdatum'")) / len(df_docs)
+    return acc
+
+
 def remove_numbers_from_string(s: str) -> str:
     s = re.sub(r'[\d\W]+', ' ', s)
     s = re.sub(r'\s+', ' ', s)

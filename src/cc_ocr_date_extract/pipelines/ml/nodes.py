@@ -12,7 +12,7 @@ from sklearn.compose import make_column_transformer
 from sklearn.model_selection import GroupShuffleSplit, GridSearchCV, cross_validate
 from sklearn.metrics import make_scorer, f1_score, average_precision_score
 
-from cc_ocr_date_extract.pipelines.ml.utils import evaluate_ocr_result, remove_numbers_from_string, \
+from cc_ocr_date_extract.pipelines.ml.utils import evaluate_ocr_result, remove_numbers_from_string, score_acc_docs, \
     custom_avg_precision_score
 from cc_ocr_date_extract.pipelines.ml.utils import apply_threshold, find_threshold, round_floats_in_dict
 
@@ -76,6 +76,7 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
     scoring = {
         'f1': make_scorer(f1_score, pos_label='Belegdatum'),
         'avg_prec': make_scorer(custom_avg_precision_score, needs_proba=True),
+        'acc_docs': score_acc_docs,
     }
     cv = GroupShuffleSplit(random_state=parameters['random_state'])
 
@@ -96,7 +97,7 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
             # 'clf__max_features': [None, 'sqrt', 100],
         }
         grid_search = GridSearchCV(pipe, param_grid,
-                                   refit='avg_prec', scoring=scoring, cv=cv, verbose=1, n_jobs=parameters['n_jobs'])
+                                   refit='acc_docs', scoring=scoring, cv=cv, verbose=1, n_jobs=parameters['n_jobs'])
         grid_search.fit(df, df['label'], groups=df['file_number'])
 
         best_pipeline = grid_search.best_estimator_
@@ -111,8 +112,11 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
 
     log.info(f"F1 test score: {cv_scores['test_f1']}")
     log.info(f"Avg precision test score: {cv_scores['test_avg_prec']}")
+    log.info(f"Acc docs test score: {cv_scores['test_acc_docs']}")
+
     log.info(f"F1 train score: {cv_scores['train_f1']}")
     log.info(f"Avg precision train score: {cv_scores['train_avg_prec']}")
+    log.info(f"Acc docs train score: {cv_scores['train_acc_docs']}")
 
     feature_names = pd.Series(best_pipeline.named_steps['features'].get_feature_names())
 
@@ -136,6 +140,7 @@ def evaluate_model(pipe: Pipeline, df: pd.DataFrame) -> (pd.Series, pd.DataFrame
                                                       pos_label='Belegdatum'),
             'avg_prec_docs': average_precision_score(df_docs['label'], df_docs['predict_proba_belegdatum'],
                                                      pos_label='Belegdatum'),
+            'acc_docs': score_acc_docs(pipe, df, df['label']),
         }
     }
 
