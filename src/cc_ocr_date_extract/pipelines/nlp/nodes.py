@@ -100,17 +100,19 @@ def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]
                 'date_position': i,
                 'match_id': match_id_str,
                 'match_string': match_string,
-                'match_date': match_date.strftime('%Y-%m-%d'),
+                'match_date': match_date,
                 'text_left': text_left,
                 'text_right': text_right,
             })
             all_dates.append(match_date)
 
         # get order of dates
-        for i, idx in enumerate(np.argsort(all_dates)):
-            result[idx]['date_order'] = i
+        date_order = {date: i for i, date in enumerate(np.sort(pd.unique(all_dates)))}
+        for r in result:
+            r['date_order'] = date_order[r['match_date']]
+            r['match_date'] = r['match_date'].strftime('%Y-%m-%d')
             # also add total number of found dates
-            result[idx]['n_match_dates'] = len(all_dates)
+            r['n_match_dates'] = len(all_dates)
 
         return json.dumps(result)
 

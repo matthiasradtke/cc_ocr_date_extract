@@ -23,10 +23,10 @@ vectorizer:
   min_df: 1
   strip_accents: unicode
   token_pattern: (?u)\b[^\d\W]{2,}\b
-  use_idf: True
+  use_idf: False
   binary: True
   sublinear_tf: True
 
 classifier:
-  n_estimators: 300
+  n_estimators: 200
   max_features: 'sqrt'
