@@ -109,6 +109,8 @@ def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]
         # get order of dates
         for i, idx in enumerate(np.argsort(all_dates)):
             result[idx]['date_order'] = i
+            # also add total number of found dates
+            result[idx]['n_match_dates'] = len(all_dates)
 
         return json.dumps(result)
 

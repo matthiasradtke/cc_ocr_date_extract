@@ -52,7 +52,7 @@ def transform_into_training_format(df: pd.DataFrame) -> pd.DataFrame:
     log.info(f"OCR results: {ocr_result}")
 
     # drop documents were no dates have been found
-    df = df[['file_number', 'date_position', 'date_order', 'match_date', 'text', 'label']].dropna()
+    df = df[['file_number', 'date_position', 'date_order', 'n_match_dates', 'match_date', 'text', 'label']].dropna()
 
     return df
 
@@ -64,7 +64,7 @@ def train_model(df: pd.DataFrame, parameters: Dict[str, Any]) -> (Pipeline, str,
                                         **parameters['classifier'])
     pipe = Pipeline([
         ('features', make_column_transformer((vectorizer, 'text'),
-                                             ('passthrough', ['date_position', 'date_order']))),
+                                             ('passthrough', ['date_position', 'date_order', 'n_match_dates']))),
         ('clf', classifier),
     ])
 
