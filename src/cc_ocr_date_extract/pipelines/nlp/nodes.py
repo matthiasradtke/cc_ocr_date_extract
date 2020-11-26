@@ -10,6 +10,7 @@ from spacy.matcher import Matcher
 from spacy_langdetect import LanguageDetector
 
 import pandas as pd
+import numpy as np
 
 import json
 from datetime import datetime
@@ -84,12 +85,11 @@ def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]
         date = parse(string, languages=[lang])
         if not date:
             date = parse(string)
-        if date:
-            date = date.strftime('%Y-%m-%d')
         return date
 
     def get_date_matches_from_text(doc: Doc) -> str:
         result = []
+        all_dates = []
         for i, (match_id, start, end) in enumerate(matcher(doc)):
             match_id_str = nlp.vocab.strings[match_id]
             match_string = doc[start:end].text
@@ -97,13 +97,18 @@ def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]
             text_left = doc[max(0, start - parameters['n_lefts']):max(0, end - 1)].text
             text_right = doc[end:min(len(doc), end + parameters['n_rights'])].text
             result.append({
-                'match_number': i,
+                'date_position': i,
                 'match_id': match_id_str,
                 'match_string': match_string,
-                'match_date': match_date,
+                'match_date': match_date.strftime('%Y-%m-%d'),
                 'text_left': text_left,
                 'text_right': text_right,
             })
+            all_dates.append(match_date)
+
+        # get order of dates
+        for i, idx in enumerate(np.argsort(all_dates)):
+            result[idx]['date_order'] = i
 
         return json.dumps(result)
 
