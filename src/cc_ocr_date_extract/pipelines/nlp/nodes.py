@@ -45,43 +45,31 @@ def create_spacy_nlp_object(parameters: Dict[str, Any]) -> Language:
 def clean_text(df: pd.DataFrame) -> pd.DataFrame:
     # remove consecutive whitespaces
     import re
-    df['pdf_text'] = df['pdf_text'].apply(lambda s: re.sub(r'\s+\n', ' ', s))
+    df['pdf_text'] = df['pdf_text'].apply(lambda s: re.sub(r'\s+', ' ', s))
     return df
 
 
 def get_date_matches(nlp: Language, df: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     # TODO: regex to configfile
-    # pattern1 = [  # "%m/%d/%Y", "%m/%d/%y" also without zero-padding
-    #     {"TEXT": {"REGEX": r"^(?:(1[0-2]|0?[1-9])[.\-\/]{1}(3[01]|[12][0-9]|0?[1-9]))[.\-\/]{1}(?:[0-9]{2})?[0-9]{2}$"}}
-    # ]
-    # pattern2 = [  # "%d/%m/%Y", "%d/%m/%y" also without zero-padding
-    #     {"TEXT": {"REGEX": r"^(?:(3[01]|[12][0-9]|0?[1-9])[.\-\/]{1}(1[0-2]|0?[1-9]))[.\-\/]{1}(?:[0-9]{2})?[0-9]{2}$"}}
-    # ]
-
-    pattern1_2 = [  # "%m/%d/%Y", "%m/%d/%y" or "%d/%m/%Y", "%d/%m/%y"
+    pattern1 = [  # "%m/%d/%Y", "%m/%d/%y" or "%d/%m/%Y", "%d/%m/%y"
         {"TEXT": {
             "REGEX": r"^(?:(1[0-2]|0?[1-9])[.\-\/]{1}(3[01]|[12][0-9]|0?[1-9]))[.\-\/]{1}(?:[0-9]{2})?[0-9]{2}$|^(?:(3[01]|[12][0-9]|0?[1-9])[.\-\/]{1}(1[0-2]|0?[1-9]))[.\-\/]{1}(?:[0-9]{2})?[0-9]{2}$"}}
     ]
-
-    pattern3 = [  # "%Y/%m/%d"
+    pattern2 = [  # "%Y/%m/%d"
         {"TEXT": {"REGEX": r"^(?:[1-9]{1}[0-9]{3})[.\-\/]{1}(?:(1[0-2]|0?[1-9])[.\-\/]{1}(3[01]|[12][0-9]|0?[1-9]))$"}}]
-
     months = r"(Jan(uar(y)?)?|Feb(ruar(y)?)?|Mar(ch)?|Mär(z)?|Apr(il)?|Ma(y|i)|Jun(e|i)?|Jul(y|i)?|Aug(ust)?|Sep(tember)?|O(c|k)t(ober)?|Nov(ember)?|De(c|z)(ember)?)"
-    pattern4 = [  # "%d-%B-%Y", "d-%b-%Y" (20-Jun-2020, 20-June-2020)
+    pattern3 = [  # "%d-%B-%Y", "d-%b-%Y" (20-Jun-2020, 20-June-2020)
         {"TEXT": {
             "REGEX": fr"^(?:(3[01]|[12][0-9]|0?[1-9])[.\-\/]{{1}}({months}))[.\-\/]{{1}}(?:[0-9]{{2}})?[0-9]{{2}}$"}}]
 
     matcher = Matcher(nlp.vocab)
 
-    # matcher.add("Date: (mm/dd/yyyy m/d/yy)", None, pattern1)
-    # matcher.add("Date: (dd/mm/yyyy d/m/yy)", None, pattern2)
-    matcher.add("Date: (__/__/yyyy _/_/yy)", None, pattern1_2)
-    matcher.add("Date: (yyyy/mm/dd)", None, pattern3)
-    matcher.add("Date: (dd-Mon-yyyy)", None, pattern4)
+    matcher.add("Date: (__/__/yyyy _/_/yy)", None, pattern1)
+    matcher.add("Date: (yyyy/mm/dd)", None, pattern2)
+    matcher.add("Date: (dd-Mon-yyyy)", None, pattern3)
 
     def parse_date(string: str, lang: str) -> datetime:
         from dateparser import parse
-        # date_formats = ["%d/%m/%Y", "%d/%m/%y", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d", "%d-%B-%Y", "d-%b-%Y"]
         date = parse(string, languages=[lang])
         if not date:
             date = parse(string)
